@@ -1,0 +1,31 @@
+# Core Dependencies
+fastapi>=0.103.0
+uvicorn>=0.23.0
+python-telegram-bot>=20.0
+python-dotenv>=1.0.0
+
+# Google Services
+google-generativeai
+google-auth>=2.22.0
+google-auth-oauthlib>=1.0.0
+google-auth-httplib2>=0.1.0
+google-api-python-client>=2.100.0
+
+# Audio Processing
+pydub>=0.25.1
+
+# Image Processing
+Pillow>=10.0.0
+huggingface-hub>=0.18.0
+
+# HTTP Requests
+requests>=2.31.0
+httpx>=0.24.0
+
+# Data Handling
+pydantic>=2.6.0
+python-multipart>=0.0.6
+
+# Utilities
+aiofiles>=23.2.0
+typing-extensions>=4.8.0
