@@ -10,7 +10,8 @@ from telegram.error import TelegramError
 from telegram import Update
 from config.settings import settings
 from config.logging_config import get_logger
-from telegram.handlers import telegram_handlers
+# Fixed import path
+from bot_handlers.telegram_handlers import telegram_handlers
 
 logger = get_logger('telegram_bot')
 
@@ -76,7 +77,7 @@ class TelegramBot:
                 )
             )
             
-            # Unknown command handler
+            # Unknown command handler - should be last
             self.application.add_handler(
                 MessageHandler(
                     filters.COMMAND,
@@ -132,7 +133,7 @@ class TelegramBot:
     def create_application(self):
         """Create the Telegram application"""
         try:
-            # Build application
+            # Build application - remove timeout parameters that cause issues
             self.application = (
                 ApplicationBuilder()
                 .token(self.token)
@@ -163,14 +164,11 @@ class TelegramBot:
             # Start the bot
             await self.application.initialize()
             await self.application.start()
+            
+            # Start polling with minimal parameters
             await self.application.updater.start_polling(
                 poll_interval=1.0,
-                timeout=10,
-                bootstrap_retries=-1,  # Retry indefinitely
-                read_timeout=20,
-                write_timeout=20,
-                connect_timeout=20,
-                pool_timeout=20
+                bootstrap_retries=-1
             )
             
             self.is_running = True
@@ -321,6 +319,8 @@ async def run_telegram_bot():
         if not settings.TELEGRAM_TOKEN:
             logger.error("❌ TELEGRAM_TOKEN not found in environment variables")
             return
+        
+        logger.info(f"📱 Using Telegram token: {settings.TELEGRAM_TOKEN[:10]}...")
         
         # Start the bot
         await telegram_bot.start_polling()

@@ -7,7 +7,9 @@ import time
 
 from config.settings import settings
 from config.logging_config import get_logger
-from telegram.bot import run_telegram_bot
+
+# Import the correct modules
+from bot_handlers.bot import run_telegram_bot
 from routes.router import app
 
 logger = get_logger('main')
