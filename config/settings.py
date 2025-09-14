@@ -40,7 +40,7 @@ class Settings:
     TTS_VOICE_NAME: str = os.getenv("TTS_VOICE_NAME", "Kore")
     
     # Model Names
-    GEMINI_STT_MODEL: str = "gemini-2.5-pro"
+    GEMINI_STT_MODEL: str = "gemini-2.5-pro" #gemini-2.0-flash-Lite
     GEMINI_TTS_MODEL: str = "gemini-2.5-flash-preview-tts"
     GEMINI_LLM_MODEL: str = "gemini-2.5-flash"
     IMAGE_GENERATION_MODEL: str = "Qwen/Qwen-Image"
