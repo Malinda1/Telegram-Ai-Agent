@@ -69,6 +69,9 @@ class AIAgentBrain:
                     "Sorry, I couldn't process your request. Please try again."
                 )
             
+            # Log the LLM response for debugging
+            logger.info(f"LLM Response: {llm_response}")
+            
             # Step 4: Update conversation context
             self.conversation_context[user_id] = {
                 "last_intent": llm_response.get("intent"),
@@ -233,13 +236,21 @@ class AIAgentBrain:
         """Handle email-related operations"""
         try:
             logger.info(f"Handling email operation: {intent}")
+            logger.info(f"Email parameters received: {parameters}")
             
             if intent == "email_send":
-                recipient = parameters.get("recipient")
-                recipient_email = parameters.get("recipient_email")
+                # FIXED: Look for the correct parameter names that the LLM handler uses
+                recipient_email = parameters.get("to_email")  # Changed from recipient_email
                 subject = parameters.get("subject")
                 body = parameters.get("body")
+                message_content = parameters.get("message_content")
                 purpose = parameters.get("purpose")
+                
+                # Use message_content as body if body is not available
+                if not body and message_content:
+                    body = message_content
+                
+                logger.info(f"Extracted email params - to: {recipient_email}, subject: {subject}, body: {body}")
                 
                 # Check for required parameters
                 if not recipient_email:
@@ -252,10 +263,10 @@ class AIAgentBrain:
                 
                 # Generate email content if not provided
                 if not subject or not body:
-                    if purpose:
+                    if purpose or message_content:
                         email_content = await llm_handler.create_email_content(
-                            purpose=purpose,
-                            recipient_name=recipient or "there",
+                            purpose=purpose or "message",
+                            recipient_name="there",
                             additional_details=parameters
                         )
                         
@@ -263,21 +274,19 @@ class AIAgentBrain:
                             subject = subject or email_content.get("subject")
                             body = body or email_content.get("body")
                 
+                # Provide defaults if still missing
                 if not subject:
-                    return {
-                        "text": "I need a subject for the email.",
-                        "success": False,
-                        "requires_clarification": True,
-                        "clarification_questions": ["What should the email subject be?"]
-                    }
+                    if body and len(body) > 5:
+                        # Use first few words as subject
+                        words = body.split()[:4]
+                        subject = ' '.join(words).title()
+                    else:
+                        subject = "Message from AI Assistant"
                 
                 if not body:
-                    return {
-                        "text": "I need the email content/message.",
-                        "success": False,
-                        "requires_clarification": True,
-                        "clarification_questions": ["What message do you want to send?"]
-                    }
+                    body = "Hello, this is a message from your AI assistant."
+                
+                logger.info(f"Final email params - to: {recipient_email}, subject: {subject}")
                 
                 # Send the email
                 email_result = await email_service.send_email(
@@ -304,6 +313,50 @@ class AIAgentBrain:
                     return {
                         "text": f"Sorry, I couldn't send the email. {email_result.get('error', 'Unknown error')}",
                         "success": False
+                    }
+            
+            elif intent == "email_get":
+                # Handle email retrieval
+                query = parameters.get("query", "is:inbox")
+                max_results = parameters.get("max_results", 10)
+                include_body = parameters.get("include_body", False)
+                
+                logger.info(f"Getting emails with query: {query}")
+                
+                # Call the email service
+                result = await email_service.get_emails(
+                    query=query,
+                    max_results=max_results,
+                    include_body=include_body
+                )
+                
+                if result["success"]:
+                    emails = result["emails"]
+                    total_count = result["total_count"]
+                    
+                    # Format the response using LLM
+                    query_type = parameters.get('time_filter', 'emails')
+                    if query_type == 'today':
+                        query_type = "today's emails"
+                    elif 'unread' in query:
+                        query_type = "unread emails"
+                    
+                    formatted_response = await llm_handler.format_email_list_response(
+                        emails, total_count, query_type
+                    )
+                    
+                    return {
+                        "text": formatted_response,
+                        "success": True,
+                        "emails": emails,
+                        "total_count": total_count
+                    }
+                else:
+                    error_message = f"Sorry, I couldn't retrieve your emails. Error: {result.get('error', 'Unknown error')}"
+                    return {
+                        "text": error_message,
+                        "success": False,
+                        "error": result.get('error')
                     }
             
             # Handle other email operations similarly...

@@ -424,6 +424,121 @@ AI Assistant
         except Exception as e:
             logger.error(f"Error getting user email: {str(e)}")
             return None
+        
+    # Example of how your main agent should handle email_get intent
+# Add this to your main agent processing logic
+
+async def process_email_get(self, analysis_result: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Process email retrieval request
+    
+    Args:
+        analysis_result: Result from LLM analysis
+        
+    Returns:
+        Dict with response details
+    """
+    try:
+        parameters = analysis_result.get('parameters', {})
+        
+        # Extract parameters with defaults
+        query = parameters.get('query', 'is:inbox')
+        max_results = parameters.get('max_results', 10)
+        include_body = parameters.get('include_body', False)
+        
+        logger.info(f"Getting emails with query: {query}")
+        
+        # Call the email service
+        result = await self.email_service.get_emails(
+            query=query,
+            max_results=max_results,
+            include_body=include_body
+        )
+        
+        if result["success"]:
+            emails = result["emails"]
+            total_count = result["total_count"]
+            
+            # Format the response using LLM
+            query_type = parameters.get('time_filter', 'emails')
+            if query_type == 'today':
+                query_type = "today's emails"
+            elif 'unread' in query:
+                query_type = "unread emails"
+            
+            formatted_response = await self.llm_handler.format_email_list_response(
+                emails, total_count, query_type
+            )
+            
+            return {
+                "success": True,
+                "response": formatted_response,
+                "emails": emails,
+                "total_count": total_count
+            }
+        else:
+            error_message = f"Sorry, I couldn't retrieve your emails. Error: {result.get('error', 'Unknown error')}"
+            return {
+                "success": False,
+                "response": error_message,
+                "error": result.get('error')
+            }
+            
+    except Exception as e:
+        logger.error(f"Error processing email get request: {str(e)}")
+        return {
+            "success": False,
+            "response": "Sorry, I encountered an error while retrieving your emails.",
+            "error": str(e)
+        }
+
+# Example of main agent processing logic
+async def process_user_request(self, user_input: str) -> str:
+    """
+    Main method to process user requests
+    """
+    try:
+        # Get analysis from LLM
+        analysis_result = await self.llm_handler.process_user_input(user_input)
+        
+        if not analysis_result:
+            return "Sorry, I couldn't understand your request."
+        
+        intent = analysis_result.get('intent')
+        logger.info(f"Detected intent: {intent}")
+        
+        # Route based on intent
+        if intent == 'email_get':
+            result = await self.process_email_get(analysis_result)
+            return result["response"]
+            
+        elif intent == 'email_send':
+            result = await self.process_email_send(analysis_result)
+            return result["response"]
+            
+        elif intent == 'calendar_create':
+            result = await self.process_calendar_create(analysis_result)
+            return result["response"]
+            
+        elif intent == 'calendar_get':
+            result = await self.process_calendar_get(analysis_result)
+            return result["response"]
+            
+        else:
+            # General chat or unsupported intent
+            return analysis_result.get('response_text', "I can help you with emails and calendar events. What would you like to do?")
+            
+    except Exception as e:
+        logger.error(f"Error processing user request: {str(e)}")
+        return "Sorry, I encountered an error processing your request."
+
+# Make sure your main agent class initialization includes:
+def __init__(self):
+    from core.llm_handler import llm_handler
+    from email_service import email_service
+    
+    self.llm_handler = llm_handler
+    self.email_service = email_service
 
 # Create global instance
 email_service = EmailService()
