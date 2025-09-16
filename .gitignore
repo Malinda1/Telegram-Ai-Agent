@@ -137,6 +137,8 @@ tmp/
 # Google credentials and tokens
 credentials.json
 token.pickle
+*.pickle
+auth/google_token.pickle
 *.json
 
 # Audio/Image files
@@ -197,4 +199,4 @@ edited_*
 comparison_*
 
 # Testing file
-test.py
+test.pyauth/google_token.pickle

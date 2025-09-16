@@ -120,12 +120,23 @@ class TelegramBot:
         try:
             logger.info("🛑 Bot shutting down...")
             
-            # Perform any cleanup here
+            # FIXED: Only clean up temporary files, preserve Google auth token
             from utils.file_handler import file_handler
-            cleanup_result = file_handler.cleanup_old_files(max_age_hours=0)  # Clean all temp files
+            import os
+            from config.settings import settings
+            
+            # Get the Google auth token file path
+            token_file = os.path.join(settings.TEMP_DIR, 'token.pickle')
+            
+            # Perform selective cleanup - exclude Google auth token
+            cleanup_result = file_handler.cleanup_old_files(
+                max_age_hours=0,  # Clean all temp files
+                exclude_files=[token_file, 'token.pickle']  # But exclude Google auth token
+            )
             
             if cleanup_result["success"]:
                 logger.info(f"✅ Cleanup on shutdown: {cleanup_result['deleted_count']} files deleted")
+                logger.info("🔐 Google auth token preserved for next session")
             
         except Exception as e:
             logger.error(f"Error in post shutdown: {str(e)}")

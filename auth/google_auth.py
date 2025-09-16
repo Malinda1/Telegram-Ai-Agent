@@ -17,9 +17,17 @@ class GoogleAuthService:
         """Initialize Google Auth Service"""
         self.scopes = settings.GOOGLE_SCOPES
         self.credentials_file = settings.CREDENTIALS_FILE
-        self.token_file = os.path.join(settings.TEMP_DIR, 'token.pickle')
+        
+        # FIXED: Move token file to a permanent directory, not temp
+        # Create auth directory if it doesn't exist
+        auth_dir = os.path.join(os.getcwd(), 'auth')
+        os.makedirs(auth_dir, exist_ok=True)
+        
+        # Store token in permanent auth directory instead of temp
+        self.token_file = os.path.join(auth_dir, 'google_token.pickle')
+        
         self.credentials = None
-        logger.info("GoogleAuthService initialized")
+        logger.info(f"GoogleAuthService initialized - Token will be stored at: {self.token_file}")
     
     def _create_credentials_file(self):
         """Create credentials.json file from environment variables"""
@@ -57,7 +65,7 @@ class GoogleAuthService:
             
             # Load existing token
             if os.path.exists(self.token_file):
-                logger.info("Loading existing authentication token...")
+                logger.info(f"Loading existing authentication token from: {self.token_file}")
                 with open(self.token_file, 'rb') as token:
                     creds = pickle.load(token)
             
@@ -85,11 +93,11 @@ class GoogleAuthService:
                     
                     logger.info("Authentication completed successfully")
                 
-                # Save credentials for next run
+                # Save credentials for next run in permanent location
                 with open(self.token_file, 'wb') as token:
                     pickle.dump(creds, token)
                 
-                logger.info("Credentials saved successfully")
+                logger.info(f"Credentials saved permanently to: {self.token_file}")
             
             self.credentials = creds
             return creds
