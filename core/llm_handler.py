@@ -19,7 +19,7 @@ class LLMHandler:
     
     def _get_system_prompt(self) -> str:
         """Get the system prompt for the AI agent"""
-        return """You are an AI assistant that helps with calendar and email management. Your job is to extract information from user requests and respond intelligently.
+        return """You are an AI assistant that helps with calendar management, email management, and image creation/editing. Your job is to extract information from user requests and respond intelligently.
 
 **CRITICAL RULES:**
 1. ALWAYS extract as much information as possible from the user's message
@@ -34,6 +34,9 @@ class LLMHandler:
 - Location: "Virtual/Online" unless specified
 - Email Subject: Generate from context when not provided
 - Email Body: Use provided message or generate professional content
+- Image Style: "realistic" unless specified
+- Image Size: "1024x1024" unless specified
+- Image Quality: "high" unless specified
 
 **Intent Recognition:**
 - calendar_create: Creating events, meetings, appointments
@@ -42,7 +45,28 @@ class LLMHandler:
 - calendar_delete: Removing events
 - email_send: Sending emails, reminders, messages
 - email_get: Retrieving, checking, reading emails
+- image_create: Creating new images from text descriptions (text-to-image)
+- image_edit: Editing existing images with text prompts (image-to-image)
+- image_generate: General image generation requests
 - general_chat: Everything else
+
+**Image Creation Parameters:**
+For image creation requests, extract:
+- prompt: Detailed description of the image to create (REQUIRED)
+- style: Art style (e.g., "realistic", "cartoon", "anime", "oil painting", "digital art", "photographic")
+- size: Image dimensions (e.g., "1024x1024", "512x512", "1024x512")
+- quality: Image quality ("high", "medium", "low")
+- negative_prompt: What to avoid in the image
+- num_images: Number of images to generate (default: 1)
+- aspect_ratio: Image aspect ratio if specified
+
+**Image Editing Parameters:**
+For image editing requests, extract:
+- source_image: Path or reference to the source image
+- edit_prompt: Description of the changes to make
+- mask_prompt: Area to edit (if specific area mentioned)
+- style: Target style for editing
+- strength: How strong the edit should be (0.1 to 1.0)
 
 **Email Send Parameters:**
 For email sending requests, extract:
@@ -74,30 +98,56 @@ Always respond with valid JSON in this exact format:
 }
 
 **Parameter Extraction Examples:**
+
+Input: "create an image of a boy flying in the sky"
+Parameters: {
+    "prompt": "a boy flying in the sky",
+    "style": "realistic",
+    "size": "1024x1024",
+    "quality": "high",
+    "num_images": 1
+}
+
+Input: "I want to create a Image boy flying the sky"
+Parameters: {
+    "prompt": "boy flying the sky",
+    "style": "realistic",
+    "size": "1024x1024",
+    "quality": "high",
+    "num_images": 1
+}
+
+Input: "generate a cartoon style image of a cat sitting on a chair"
+Parameters: {
+    "prompt": "cat sitting on a chair",
+    "style": "cartoon",
+    "size": "1024x1024",
+    "quality": "high",
+    "num_images": 1
+}
+
+Input: "create 3 images of a sunset over mountains in oil painting style"
+Parameters: {
+    "prompt": "sunset over mountains",
+    "style": "oil painting",
+    "size": "1024x1024",
+    "quality": "high",
+    "num_images": 3
+}
+
+Input: "edit this image to make the sky more blue"
+Parameters: {
+    "edit_prompt": "make the sky more blue",
+    "style": "realistic",
+    "strength": 0.7
+}
+
 Input: "send email to john@example.com with subject hello and message this is a test"
 Parameters: {
     "to_email": "john@example.com",
     "subject": "hello",
     "body": "this is a test",
     "message_content": "this is a test"
-}
-
-Input: "send a email to pasidumalinda998@gmail.com say to him this is the testing message"
-Parameters: {
-    "to_email": "pasidumalinda998@gmail.com",
-    "subject": "Testing Message",
-    "body": "this is the testing message",
-    "message_content": "this is the testing message",
-    "purpose": "testing"
-}
-
-Input: "email user@domain.com about meeting tomorrow"
-Parameters: {
-    "to_email": "user@domain.com",
-    "subject": "Meeting Tomorrow",
-    "body": "Hi, I wanted to reach out about our meeting tomorrow. Please let me know if you have any questions.",
-    "message_content": "about meeting tomorrow",
-    "purpose": "meeting reminder"
 }
 
 Input: "create event interview meeting tomorrow at 4 PM"
@@ -134,11 +184,17 @@ Parameters: {
         try:
             logger.info(f"Processing user input: {user_input[:100]}...")
             
-            # First try regex-based extraction for emails (faster and more reliable)
+            # First try regex-based extraction for common patterns (faster and more reliable)
             email_result = self._extract_email_intent(user_input)
             if email_result:
                 logger.info("Email intent detected via regex")
                 return email_result
+            
+            # Check for image-related keywords
+            image_result = self._extract_image_intent(user_input)
+            if image_result:
+                logger.info("Image intent detected via regex")
+                return image_result
             
             # Create a focused prompt for intent recognition
             analysis_prompt = f"""
@@ -149,6 +205,40 @@ User Input: "{user_input}"
 Analyze this input and extract all possible information. Respond with JSON only (no extra text):
 
 Examples:
+Input: "create an image of a boy flying in the sky"
+Output: {{
+    "intent": "image_create",
+    "confidence": 0.95,
+    "parameters": {{
+        "prompt": "a boy flying in the sky",
+        "style": "realistic",
+        "size": "1024x1024",
+        "quality": "high",
+        "num_images": 1
+    }},
+    "response_text": "I'll create an image of a boy flying in the sky for you.",
+    "requires_clarification": false,
+    "clarification_questions": [],
+    "suggested_actions": ["create_image"]
+}}
+
+Input: "I want to create a Image boy flying the sky"
+Output: {{
+    "intent": "image_create",
+    "confidence": 0.95,
+    "parameters": {{
+        "prompt": "boy flying the sky",
+        "style": "realistic",
+        "size": "1024x1024",
+        "quality": "high",
+        "num_images": 1
+    }},
+    "response_text": "I'll create an image of a boy flying in the sky for you.",
+    "requires_clarification": false,
+    "clarification_questions": [],
+    "suggested_actions": ["create_image"]
+}}
+
 Input: "send email to john@example.com with subject hello and message this is a test"
 Output: {{
     "intent": "email_send",
@@ -163,39 +253,6 @@ Output: {{
     "requires_clarification": false,
     "clarification_questions": [],
     "suggested_actions": ["send_email"]
-}}
-
-Input: "send a email to pasidumalinda998@gmail.com say to him this is the testing message"
-Output: {{
-    "intent": "email_send",
-    "confidence": 0.95,
-    "parameters": {{
-        "to_email": "pasidumalinda998@gmail.com",
-        "subject": "Testing Message",
-        "body": "this is the testing message",
-        "message_content": "this is the testing message",
-        "purpose": "testing"
-    }},
-    "response_text": "I'll send a testing message to pasidumalinda998@gmail.com.",
-    "requires_clarification": false,
-    "clarification_questions": [],
-    "suggested_actions": ["send_email"]
-}}
-
-Input: "create event interview meeting tomorrow at 4 PM"
-Output: {{
-    "intent": "calendar_create",
-    "confidence": 0.95,
-    "parameters": {{
-        "title": "Interview Meeting",
-        "date": "tomorrow",
-        "time": "4 PM",
-        "duration": "1 hour"
-    }},
-    "response_text": "I'll create an Interview Meeting for tomorrow at 4:00 PM (1 hour duration). Shall I proceed?",
-    "requires_clarification": false,
-    "clarification_questions": [],
-    "suggested_actions": ["create_calendar_event"]
 }}
 
 Now analyze: "{user_input}"
@@ -218,6 +275,151 @@ Now analyze: "{user_input}"
             logger.error(f"Error processing user input with LLM: {str(e)}")
             return self._create_fallback_response(user_input)
     
+    def _extract_image_intent(self, user_input: str) -> Optional[Dict[str, Any]]:
+        """
+        Extract image creation intent using regex patterns
+        
+        Args:
+            user_input (str): User input text
+            
+        Returns:
+            Optional[Dict[str, Any]]: Extracted image parameters or None
+        """
+        try:
+            user_lower = user_input.lower()
+            
+            # Check for image creation keywords
+            image_create_keywords = [
+                'create', 'generate', 'make', 'draw', 'paint', 'design', 'produce'
+            ]
+            image_nouns = [
+                'image', 'picture', 'photo', 'artwork', 'drawing', 'painting', 'illustration'
+            ]
+            
+            # Check if it's an image creation request
+            has_create_keyword = any(keyword in user_lower for keyword in image_create_keywords)
+            has_image_keyword = any(keyword in user_lower for keyword in image_nouns)
+            
+            # Also check for direct patterns like "I want to create a Image"
+            direct_patterns = [
+                r'(?:create|generate|make|draw)\s+(?:an?\s+)?(?:image|picture|photo|artwork|drawing|painting|illustration)',
+                r'(?:i\s+want\s+to\s+)?(?:create|generate|make|draw)\s+(?:a\s+)?(?:image|picture|photo)',
+                r'(?:text\s+to\s+image|image\s+generation|ai\s+art)'
+            ]
+            
+            is_image_request = has_create_keyword and has_image_keyword
+            for pattern in direct_patterns:
+                if re.search(pattern, user_lower):
+                    is_image_request = True
+                    break
+            
+            if not is_image_request:
+                return None
+            
+            # Extract the prompt (description of what to create)
+            prompt = self._extract_image_prompt(user_input)
+            if not prompt:
+                return None
+            
+            # Extract style if mentioned
+            style = "realistic"  # default
+            style_patterns = {
+                'cartoon': r'cartoon|anime|animated',
+                'realistic': r'realistic|photographic|photo',
+                'digital art': r'digital\s+art|digital',
+                'oil painting': r'oil\s+painting|painting',
+                'watercolor': r'watercolor|water\s+color',
+                'sketch': r'sketch|pencil|drawing',
+                'abstract': r'abstract',
+                'vintage': r'vintage|retro|old',
+                'modern': r'modern|contemporary'
+            }
+            
+            for style_name, pattern in style_patterns.items():
+                if re.search(pattern, user_lower):
+                    style = style_name
+                    break
+            
+            # Extract number of images
+            num_images = 1
+            num_match = re.search(r'(\d+)\s+images?', user_lower)
+            if num_match:
+                num_images = int(num_match.group(1))
+                num_images = min(num_images, 4)  # Limit to 4 images max
+            
+            # Extract size if mentioned
+            size = "1024x1024"  # default
+            size_patterns = [
+                r'(\d+x\d+)',
+                r'(\d+\s*[x×]\s*\d+)',
+            ]
+            
+            for pattern in size_patterns:
+                match = re.search(pattern, user_input)
+                if match:
+                    size = match.group(1).replace(' ', '').replace('×', 'x')
+                    break
+            
+            return {
+                "intent": "image_create",
+                "confidence": 0.9,
+                "parameters": {
+                    "prompt": prompt,
+                    "style": style,
+                    "size": size,
+                    "quality": "high",
+                    "num_images": num_images
+                },
+                "response_text": f"I'll create {'an image' if num_images == 1 else f'{num_images} images'} of {prompt} in {style} style for you.",
+                "requires_clarification": False,
+                "clarification_questions": [],
+                "suggested_actions": ["create_image"]
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in regex image extraction: {str(e)}")
+            return None
+    
+    def _extract_image_prompt(self, user_input: str) -> Optional[str]:
+        """Extract the image description from user input"""
+        try:
+            # Remove common prefixes and extract the actual description
+            cleaned_input = user_input.lower()
+            
+            # Patterns to remove from the beginning
+            removal_patterns = [
+                r'^(?:i\s+want\s+to\s+)?(?:create|generate|make|draw|paint|design|produce)\s+(?:an?\s+)?(?:image|picture|photo|artwork|drawing|painting|illustration)\s+(?:of\s+)?',
+                r'^(?:create|generate|make|draw|paint|design|produce)\s+(?:an?\s+)?(?:image|picture|photo|artwork|drawing|painting|illustration)\s+(?:of\s+)?',
+                r'^(?:i\s+want\s+to\s+)?(?:create|generate|make|draw)\s+(?:a\s+)?(?:image|picture|photo)\s+',
+                r'^(?:can\s+you\s+)?(?:create|generate|make|draw)\s+'
+            ]
+            
+            description = user_input
+            for pattern in removal_patterns:
+                description = re.sub(pattern, '', description, flags=re.IGNORECASE).strip()
+            
+            # Remove style information and other modifiers to get clean prompt
+            style_removals = [
+                r'\s+in\s+(?:cartoon|realistic|digital\s+art|oil\s+painting|watercolor|sketch|abstract|vintage|modern)\s+style',
+                r'\s+style\s*$',
+                r'\s+(?:\d+x\d+|\d+\s*[x×]\s*\d+)',
+                r'\s+(?:high|low|medium)\s+quality',
+                r'\s+\d+\s+images?'
+            ]
+            
+            for pattern in style_removals:
+                description = re.sub(pattern, '', description, flags=re.IGNORECASE).strip()
+            
+            # Clean up extra spaces and common words
+            description = re.sub(r'\s+', ' ', description).strip()
+            description = re.sub(r'^(?:a\s+|an\s+|the\s+)', '', description, flags=re.IGNORECASE).strip()
+            
+            return description if len(description) > 2 else None
+            
+        except Exception as e:
+            logger.error(f"Error extracting image prompt: {str(e)}")
+            return None
+
     def _extract_email_intent(self, user_input: str) -> Optional[Dict[str, Any]]:
         """
         Extract email sending intent using regex patterns
@@ -383,7 +585,31 @@ Now analyze: "{user_input}"
         # Simple keyword-based intent detection as fallback
         user_lower = user_input.lower()
         
-        # Check for email sending keywords first
+        # Check for image creation keywords first
+        image_create_keywords = ['create', 'generate', 'make', 'draw', 'paint', 'design', 'produce']
+        image_nouns = ['image', 'picture', 'photo', 'artwork', 'drawing', 'painting', 'illustration']
+        
+        if any(keyword in user_lower for keyword in image_create_keywords) and any(keyword in user_lower for keyword in image_nouns):
+            # Try to extract image prompt
+            prompt = self._extract_image_prompt(user_input)
+            if prompt:
+                return {
+                    "intent": "image_create",
+                    "confidence": 0.8,
+                    "parameters": {
+                        "prompt": prompt,
+                        "style": "realistic",
+                        "size": "1024x1024",
+                        "quality": "high",
+                        "num_images": 1
+                    },
+                    "response_text": f"I'll create an image of {prompt} for you.",
+                    "requires_clarification": False,
+                    "clarification_questions": [],
+                    "suggested_actions": ["create_image"]
+                }
+        
+        # Check for email sending keywords
         email_send_keywords = ['send', 'email', 'mail', 'message', 'write to', 'contact']
         if any(keyword in user_lower for keyword in email_send_keywords):
             # Try to extract email address
@@ -538,7 +764,7 @@ Now analyze: "{user_input}"
             "intent": "general_chat",
             "confidence": 0.7,
             "parameters": {},
-            "response_text": "I can help you with calendar events and emails. Could you be more specific about what you'd like me to do?",
+            "response_text": "I can help you with calendar events, emails, and image creation. Could you be more specific about what you'd like me to do?",
             "requires_clarification": False,
             "clarification_questions": [],
             "suggested_actions": []
@@ -644,6 +870,52 @@ Guidelines:
             logger.error(f"Error creating email content: {str(e)}")
             return None
     
+    async def create_image_prompt_enhancement(
+        self,
+        basic_prompt: str,
+        style: str = "realistic",
+        additional_details: Optional[Dict[str, Any]] = None
+    ) -> str:
+        """
+        Enhance a basic image prompt with more detailed descriptions
+        
+        Args:
+            basic_prompt (str): Basic image description
+            style (str): Desired art style
+            additional_details (Optional[Dict[str, Any]]): Additional context
+            
+        Returns:
+            str: Enhanced prompt for better image generation
+        """
+        try:
+            logger.info(f"Enhancing image prompt: {basic_prompt}")
+            
+            enhancement_prompt = f"""
+You are an expert at creating detailed prompts for AI image generation. 
+Enhance this basic prompt to create a more detailed and effective image generation prompt.
+
+Basic prompt: "{basic_prompt}"
+Style: {style}
+Additional details: {additional_details or {}}
+
+Guidelines for enhancement:
+- Add relevant visual details (lighting, composition, colors)
+- Include style-specific keywords
+- Add quality enhancers
+- Keep the core concept intact
+- Make it suitable for AI image generation
+- Don't make it overly complex
+
+Return only the enhanced prompt, no additional text.
+"""
+
+            enhanced = await self.generate_response(enhancement_prompt, max_tokens=200)
+            return enhanced.strip() if enhanced else basic_prompt
+            
+        except Exception as e:
+            logger.error(f"Error enhancing image prompt: {str(e)}")
+            return basic_prompt
+    
     async def format_calendar_event_response(
         self,
         event_details: Dict[str, Any],
@@ -740,6 +1012,48 @@ Keep it concise but informative.
         except Exception as e:
             logger.error(f"Error formatting email list response: {str(e)}")
             return f"Found {total_count} {query_type}. Use specific commands to interact with them."
+    
+    async def format_image_creation_response(
+        self,
+        image_details: Dict[str, Any],
+        success: bool = True,
+        image_path: Optional[str] = None
+    ) -> str:
+        """
+        Format a response for image creation operations
+        
+        Args:
+            image_details (Dict[str, Any]): Image creation details
+            success (bool): Whether the operation was successful
+            image_path (Optional[str]): Path to the created image
+            
+        Returns:
+            str: Formatted response text
+        """
+        try:
+            if not success:
+                return f"I encountered an issue creating the image. Please try again with a different prompt."
+            
+            prompt = image_details.get('prompt', 'your request')
+            style = image_details.get('style', 'realistic')
+            num_images = image_details.get('num_images', 1)
+            
+            response = f"✅ Successfully created {'an image' if num_images == 1 else f'{num_images} images'} of '{prompt}' in {style} style!"
+            
+            if image_path:
+                response += f"\n\n📁 Image saved at: {image_path}"
+            
+            response += f"\n\n🎨 Style: {style.title()}"
+            response += f"\n📐 Size: {image_details.get('size', '1024x1024')}"
+            response += f"\n⚡ Quality: {image_details.get('quality', 'high').title()}"
+            
+            response += "\n\nWould you like me to create any variations or make any adjustments to the image?"
+            
+            return response
+            
+        except Exception as e:
+            logger.error(f"Error formatting image creation response: {str(e)}")
+            return "Image created successfully!"
 
 # Create global instance
 llm_handler = LLMHandler()

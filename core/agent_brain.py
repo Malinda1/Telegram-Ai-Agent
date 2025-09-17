@@ -383,11 +383,16 @@ class AIAgentBrain:
         try:
             logger.info(f"Handling image operation: {intent}")
             
-            if intent == "image_generate":
-                description = parameters.get("description")
-                style = parameters.get("style", "")
+            # FIXED: Handle both "image_create" and "image_generate" intents
+            if intent in ["image_create", "image_generate"]:
+                # Extract prompt from parameters (check multiple possible keys)
+                prompt = parameters.get("prompt") or parameters.get("description")
+                style = parameters.get("style", "realistic")
+                size = parameters.get("size", "1024x1024")
+                quality = parameters.get("quality", "high")
+                num_images = parameters.get("num_images", 1)
                 
-                if not description:
+                if not prompt:
                     return {
                         "text": "I need a description of the image you want me to create.",
                         "success": False,
@@ -395,15 +400,41 @@ class AIAgentBrain:
                         "clarification_questions": ["What image would you like me to generate?"]
                     }
                 
-                # Generate the image
-                image_result = await image_generator.generate_image(description, style)
+                logger.info(f"Creating image with prompt: {prompt}, style: {style}")
+                
+                # Enhanced prompt for better results
+                enhanced_prompt = await llm_handler.create_image_prompt_enhancement(
+                    prompt, style, parameters
+                )
+                
+                # Generate the image using the enhanced prompt
+                image_result = await image_generator.generate_image(
+                    description=enhanced_prompt,
+                    style=style
+                )
                 
                 if image_result["success"]:
+                    # Format success response using LLM
+                    formatted_response = await llm_handler.format_image_creation_response(
+                        {
+                            "prompt": prompt,
+                            "style": style,
+                            "size": size,
+                            "quality": quality,
+                            "num_images": num_images
+                        },
+                        success=True,
+                        image_path=image_result["image_path"]
+                    )
+                    
                     return {
-                        "text": f"🎨 I've created an image based on: '{description}'\n\nImage saved and ready to send!",
+                        "text": formatted_response,
                         "success": True,
                         "image_path": image_result["image_path"],
-                        "description": description
+                        "description": prompt,
+                        "enhanced_prompt": enhanced_prompt,
+                        "style": style,
+                        "image_details": image_result
                     }
                 else:
                     return {
@@ -412,10 +443,12 @@ class AIAgentBrain:
                     }
             
             elif intent == "image_edit":
-                modifications = parameters.get("modifications")
-                input_image = parameters.get("input_image")
+                # Extract editing parameters
+                edit_prompt = parameters.get("edit_prompt") or parameters.get("modifications")
+                source_image = parameters.get("source_image") or parameters.get("input_image")
+                strength = parameters.get("strength", 0.7)
                 
-                if not modifications:
+                if not edit_prompt:
                     return {
                         "text": "Please describe what changes you'd like me to make to the image.",
                         "success": False,
@@ -424,14 +457,18 @@ class AIAgentBrain:
                     }
                 
                 # Edit the image
-                edit_result = await image_editor.edit_image(input_image, modifications)
+                edit_result = await image_editor.edit_image(
+                    source_image,
+                    edit_prompt,
+                    strength=strength
+                )
                 
                 if edit_result["success"]:
                     return {
-                        "text": f"🎨 I've modified the image based on: '{modifications}'\n\nEdited image is ready!",
+                        "text": f"🎨 I've modified the image based on: '{edit_prompt}'\n\nEdited image is ready!",
                         "success": True,
                         "image_path": edit_result["image_path"],
-                        "modifications": modifications
+                        "modifications": edit_prompt
                     }
                 else:
                     return {
